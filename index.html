@@ -4,7 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>DeepSeek 聊天助手</title>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js">
+    </script>
     <style>
         /* ===== 全局重置 & 变量 ===== */
         * {
@@ -35,6 +36,7 @@
             --safe-bottom: env(safe-area-inset-bottom, 0px);
             --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             --code-font: 'Fira Code', 'JetBrains Mono', 'SF Mono', 'Consolas', 'Menlo', 'source-code-pro', 'Courier New', monospace;
+            --assistant-color: #6C5CE7;
         }
 
         html,
@@ -57,7 +59,7 @@
             overflow: hidden;
         }
 
-        /* ===== 侧边栏 ===== */
+        /* ===== 侧边栏 (仅对话历史) ===== */
         .sidebar {
             position: fixed;
             top: 0;
@@ -83,9 +85,13 @@
             pointer-events: none;
             transition: opacity var(--transition);
         }
-        .sidebar-overlay.open {
-            opacity: 1;
-            pointer-events: auto;
+        .sidebar-overlay.open { opacity: 1; pointer-events: auto; }
+
+        .sidebar-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
         }
 
         .sidebar-header {
@@ -96,13 +102,17 @@
             justify-content: space-between;
             flex-shrink: 0;
         }
-        .sidebar-header h2 { font-size: 17px; font-weight: 600; }
+        .sidebar-header h2 {
+            font-size: 17px;
+            font-weight: 600;
+        }
         .sidebar-header .btn-new {
             background: var(--primary);
             color: #fff;
             border: none;
             border-radius: 50%;
-            width: 36px; height: 36px;
+            width: 36px;
+            height: 36px;
             font-size: 22px;
             display: flex;
             align-items: center;
@@ -126,13 +136,9 @@
             align-items: center;
             justify-content: space-between;
             transition: background 0.2s;
-            position: relative;
         }
         .session-item:active { background: var(--border); }
-        .session-item.active {
-            background: var(--primary);
-            color: #fff;
-        }
+        .session-item.active { background: var(--primary); color: #fff; }
         .session-item .title {
             flex: 1;
             font-size: 14px;
@@ -156,12 +162,8 @@
             flex-shrink: 0;
             transition: background 0.2s, color 0.2s;
         }
-        .session-item .btn-del:active {
-            background: rgba(255,255,255,0.25);
-            color: #fff;
-        }
-        .session-item.active .btn-del { color: rgba(255,255,255,0.8); }
         .session-item .btn-del:active { background: rgba(0,0,0,0.08); }
+        .session-item.active .btn-del { color: rgba(255,255,255,0.8); }
         .session-item.active .btn-del:active { background: rgba(255,255,255,0.2); }
 
         .sidebar-footer {
@@ -194,11 +196,13 @@
             border-bottom: 1px solid var(--border);
             flex-shrink: 0;
             z-index: 10;
+            gap: 8px;
         }
         .header .left {
             display: flex;
             align-items: center;
             gap: 8px;
+            min-width: 0;
         }
         .header .btn-menu {
             background: none;
@@ -209,14 +213,37 @@
             border-radius: 8px;
             color: var(--text);
             transition: background 0.2s;
+            flex-shrink: 0;
         }
         .header .btn-menu:active { background: var(--border); }
-        .header .title { font-size: 17px; font-weight: 600; }
+        .header .title { font-size: 17px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .header .right {
             display: flex;
             align-items: center;
             gap: 6px;
+            flex-shrink: 0;
         }
+        .header .assistant-badge {
+            font-size: 12px;
+            background: rgba(108, 92, 231, 0.12);
+            color: var(--assistant-color);
+            padding: 4px 14px;
+            border-radius: 16px;
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 160px;
+            flex-shrink: 0;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.15s;
+            border: none;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .header .assistant-badge:active { background: rgba(108, 92, 231, 0.22); transform: scale(0.96); }
+        .header .assistant-badge .arrow { font-size: 10px; margin-left: 2px; }
         .header .btn-settings {
             background: none;
             border: none;
@@ -251,7 +278,7 @@
         }
         .chat-area .empty-state .icon { font-size: 52px; margin-bottom: 16px; opacity: 0.6; }
         .chat-area .empty-state h3 { font-size: 18px; font-weight: 600; margin-bottom: 6px; color: var(--text); }
-        .chat-area .empty-state p { font-size: 14px; max-width: 260px; }
+        .chat-area .empty-state p { font-size: 14px; max-width: 280px; }
 
         /* ===== 消息气泡 ===== */
         .message {
@@ -276,7 +303,6 @@
             white-space: normal;
             box-shadow: 0 1px 4px rgba(0,0,0,0.04);
             user-select: text;
-            -webkit-user-select: text;
             cursor: text;
         }
         .message.user .bubble {
@@ -474,7 +500,7 @@
             color: var(--text-secondary);
         }
 
-        /* ===== 设置弹窗 ===== */
+        /* ===== 通用弹窗 ===== */
         .modal-overlay {
             position: fixed;
             inset: 0;
@@ -502,7 +528,7 @@
             overflow-y: auto;
         }
         .modal-overlay.open .modal { transform: scale(1) translateY(0); }
-        .modal h3 { font-size: 19px; font-weight: 600; margin-bottom: 20px; text-align: center; }
+        .modal h3 { font-size: 19px; font-weight: 600; margin-bottom: 16px; text-align: center; }
         .modal .field { margin-bottom: 16px; }
         .modal .field label {
             display: block;
@@ -511,7 +537,7 @@
             color: var(--text-secondary);
             margin-bottom: 4px;
         }
-        .modal .field input, .modal .field select {
+        .modal .field input, .modal .field select, .modal .field textarea {
             width: 100%;
             padding: 10px 14px;
             border: 1.5px solid var(--border);
@@ -523,7 +549,8 @@
             outline: none;
             transition: border-color 0.2s;
         }
-        .modal .field input:focus, .modal .field select:focus { border-color: var(--primary); }
+        .modal .field input:focus, .modal .field select:focus, .modal .field textarea:focus { border-color: var(--primary); }
+        .modal .field textarea { min-height: 80px; resize: vertical; }
         .modal .field .hint { font-size: 12px; color: var(--text-secondary); margin-top: 4px; opacity: 0.7; }
 
         .advanced-params {
@@ -540,8 +567,9 @@
             font-weight: 500;
             color: var(--text);
             padding: 4px 0;
+            user-select: none;
         }
-        .advanced-params .toggle-header span { transition: transform 0.2s; }
+        .advanced-params .toggle-header span { transition: transform 0.2s; font-size: 12px; }
         .advanced-params .toggle-header.open span { transform: rotate(90deg); }
         .advanced-params .params-body { display: none; margin-top: 12px; }
         .advanced-params .params-body.open { display: block; }
@@ -552,18 +580,8 @@
             margin-bottom: 14px;
             flex-wrap: wrap;
         }
-        .param-row label {
-            font-size: 13px;
-            color: var(--text-secondary);
-            min-width: 80px;
-            flex-shrink: 0;
-        }
-        .param-row .switch-wrap {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            flex-wrap: wrap;
-        }
+        .param-row label { font-size: 13px; color: var(--text-secondary); min-width: 80px; flex-shrink: 0; }
+        .param-row .switch-wrap { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
         .param-row .switch-wrap input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; }
         .param-row .switch-wrap input[type="number"],
         .param-row .switch-wrap input[type="text"] {
@@ -580,13 +598,7 @@
         }
         .param-row .switch-wrap input:disabled { opacity: 0.4; cursor: not-allowed; }
         .param-row .switch-wrap input:focus { border-color: var(--primary); }
-        .param-row .hint {
-            font-size: 12px;
-            color: var(--text-secondary);
-            opacity: 0.8;
-            width: 100%;
-            padding-left: 90px;
-        }
+        .param-row .hint { font-size: 12px; color: var(--text-secondary); opacity: 0.8; width: 100%; padding-left: 90px; }
         .modal .actions {
             display: flex;
             gap: 10px;
@@ -607,6 +619,65 @@
         .modal .actions .btn-cancel:active { background: #d5dce5; }
         .modal .actions .btn-confirm { background: var(--primary); color: #fff; }
         .modal .actions .btn-confirm:active { background: var(--primary-dark); }
+        .modal .actions .btn-danger { background: #e74c3c; color: #fff; flex: 0.4; }
+        .modal .actions .btn-danger:active { background: #c0392b; }
+
+        /* ===== 助手管理弹窗专用 ===== */
+        .manager-list {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            margin: 8px 0 16px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .manager-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 12px;
+            border-radius: var(--radius-sm);
+            background: var(--bg);
+            border: 1px solid var(--border);
+            transition: background 0.2s;
+        }
+        .manager-item .name {
+            flex: 1;
+            font-size: 14px;
+            font-weight: 500;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .manager-item .actions {
+            display: flex;
+            gap: 4px;
+            flex-shrink: 0;
+        }
+        .manager-item .actions button {
+            width: 28px; height: 28px;
+            border: none;
+            border-radius: 50%;
+            background: transparent;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            color: var(--text-secondary);
+            transition: background 0.2s, color 0.2s;
+        }
+        .manager-item .actions button:active { background: var(--border); }
+        .manager-item .actions .edit-btn { color: var(--primary); }
+        .manager-item .actions .del-btn { color: #e74c3c; }
+        .manager-item .default-badge {
+            font-size: 11px;
+            background: var(--primary);
+            color: #fff;
+            padding: 2px 8px;
+            border-radius: 10px;
+            flex-shrink: 0;
+        }
 
         /* ===== 滚动条 ===== */
         ::-webkit-scrollbar { width: 4px; height: 4px; }
@@ -630,6 +701,7 @@
             .message .bubble { font-size: 14px; padding: 10px 14px; }
             .input-row .input-wrap textarea { font-size: 14px; }
             .input-row .btn-send { width: 36px; height: 36px; font-size: 18px; }
+            .header .assistant-badge { max-width: 110px; font-size: 11px; padding: 3px 10px; }
         }
         @media (max-width: 360px) {
             .footer { padding: 4px 8px calc(4px + var(--safe-bottom)); gap: 4px; }
@@ -656,19 +728,17 @@
                 --primary: #6B85FF;
                 --primary-light: #95AAFF;
                 --primary-dark: #4F6EF7;
+                --assistant-color: #A29BFE;
             }
             .input-row .input-wrap { background: #0F1520; }
             .sidebar, .header, .footer, .modal { background: #1A2233; }
             .message .bubble pre { background: #111827; border-color: #4F6EF7; }
             .message .bubble pre code { color: #e2e8f0; }
             .message .bubble code:not(pre code) { background: rgba(79,110,247,0.2); }
-            .modal .field input, .modal .field select,
+            .modal .field input, .modal .field select, .modal .field textarea,
             .param-row .switch-wrap input[type="number"],
-            .param-row .switch-wrap input[type="text"] {
-                background: #0F1520;
-                border-color: #2A3648;
-                color: #E8EDF5;
-            }
+            .param-row .switch-wrap input[type="text"] { background: #0F1520; border-color: #2A3648; color: #E8EDF5; }
+            .manager-item { background: #0F1520; border-color: #2A3648; }
         }
     </style>
 </head>
@@ -676,14 +746,16 @@
     <div id="app">
         <!-- 侧边栏遮罩 -->
         <div class="sidebar-overlay" id="sidebarOverlay"></div>
-        <!-- 侧边栏 -->
+        <!-- 侧边栏 (仅对话历史) -->
         <aside class="sidebar" id="sidebar">
-            <div class="sidebar-header">
-                <h2>💬 对话历史</h2>
-                <button class="btn-new" id="btnNewSession" title="新建对话">＋</button>
+            <div class="sidebar-content">
+                <div class="sidebar-header">
+                    <h2>💬 对话历史</h2>
+                    <button class="btn-new" id="btnNewSession" title="新建对话">＋</button>
+                </div>
+                <div class="session-list" id="sessionList"></div>
+                <div class="sidebar-footer">DeepSeek 聊天助手 · 本地存储</div>
             </div>
-            <div class="session-list" id="sessionList"></div>
-            <div class="sidebar-footer">DeepSeek 聊天助手 · 本地存储</div>
         </aside>
 
         <!-- 主区域 -->
@@ -694,6 +766,10 @@
                     <span class="title">DeepSeek 助手</span>
                 </div>
                 <div class="right">
+                    <button class="assistant-badge" id="headerAssistantBtn" title="切换助手">
+                        <span id="assistantBadgeName">🤖 默认助手</span>
+                        <span class="arrow">▼</span>
+                    </button>
                     <button class="btn-settings" id="btnSettings" aria-label="设置">⚙️</button>
                 </div>
             </header>
@@ -702,7 +778,7 @@
                 <div class="empty-state" id="emptyState">
                     <div class="icon">🤖</div>
                     <h3>开始对话</h3>
-                    <p>选择模型，输入你的问题，DeepSeek 将为你解答。</p>
+                    <p>选择助手和模型，输入你的问题，DeepSeek 将为你解答。</p>
                 </div>
             </div>
 
@@ -721,7 +797,7 @@
         </div>
     </div>
 
-    <!-- 设置弹窗 -->
+    <!-- ===== 设置弹窗 (API Key + 模型) ===== -->
     <div class="modal-overlay" id="settingsModal">
         <div class="modal">
             <h3>⚙️ 设置</h3>
@@ -737,64 +813,105 @@
                     <option value="deepseek-reasoner">🧠 Pro（推理）</option>
                 </select>
             </div>
+            <div class="actions">
+                <button class="btn-cancel" id="btnSettingsCancel">取消</button>
+                <button class="btn-confirm" id="btnSettingsConfirm">保存</button>
+            </div>
+        </div>
+    </div>
 
+    <!-- ===== 切换助手弹窗 (快速选择) ===== -->
+    <div class="modal-overlay" id="switchAssistantModal">
+        <div class="modal" style="max-width:340px;">
+            <h3 style="font-size:17px;margin-bottom:12px;">🤖 切换助手</h3>
+            <div id="switchAssistantList" style="display:flex;flex-direction:column;gap:4px;max-height:280px;overflow-y:auto;"></div>
+            <div class="actions" style="margin-top:12px;gap:8px;">
+                <button class="btn-confirm" id="btnManageAssistants" style="flex:1;">管理助手</button>
+                <button class="btn-cancel" id="btnSwitchCancel" style="flex:0.6;">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 助手管理弹窗 (列表 + 新建/编辑/删除) ===== -->
+    <div class="modal-overlay" id="assistantManagerModal">
+        <div class="modal" style="max-width:440px;">
+            <h3 style="font-size:18px;">🤖 管理助手</h3>
+            <div class="manager-list" id="managerList"></div>
+            <div class="actions" style="gap:8px;">
+                <button class="btn-confirm" id="btnNewAssistantFromManager" style="flex:1;">＋ 新建助手</button>
+                <button class="btn-cancel" id="btnManagerClose" style="flex:0.5;">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 助手编辑弹窗 (新建/编辑) ===== -->
+    <div class="modal-overlay" id="assistantModal">
+        <div class="modal">
+            <h3 id="assistantModalTitle">🤖 编辑助手</h3>
+            <input type="hidden" id="editAssistantId" value="" />
+            <div class="field">
+                <label for="editAssistantName">助手名称</label>
+                <input type="text" id="editAssistantName" placeholder="例如：代码助手、翻译助手..." />
+            </div>
+            <div class="field">
+                <label for="editSystemPrompt">系统提示词 (System Prompt)</label>
+                <textarea id="editSystemPrompt" rows="3" placeholder="为助手设定角色和规则…"></textarea>
+                <div class="hint">AI 将按照此提示词进行回复。留空则为通用对话。</div>
+            </div>
             <div class="advanced-params">
-                <div class="toggle-header" id="paramsToggle">
-                    <span>▶</span> 高级参数 (max_tokens / temperature / top_p / frequency_penalty / presence_penalty)
+                <div class="toggle-header" id="asstParamsToggle">
+                    <span>▶</span> 高级参数
                 </div>
-                <div class="params-body" id="paramsBody">
+                <div class="params-body" id="asstParamsBody">
                     <div class="param-row">
                         <label>max_tokens</label>
                         <div class="switch-wrap">
-                            <input type="checkbox" id="enableMaxTokens" />
+                            <input type="checkbox" id="asstEnableMaxTokens" />
                             <span style="font-size:12px;color:var(--text-secondary);">启用</span>
-                            <input type="number" id="maxTokensValue" value="4096" min="1" max="8192" step="1" disabled />
+                            <input type="number" id="asstMaxTokensValue" value="4096" min="1" max="8192" step="1" disabled />
                         </div>
                     </div>
                     <div class="param-row">
                         <label>temperature</label>
                         <div class="switch-wrap">
-                            <input type="checkbox" id="enableTemperature" />
+                            <input type="checkbox" id="asstEnableTemperature" />
                             <span style="font-size:12px;color:var(--text-secondary);">启用</span>
-                            <input type="number" id="temperatureValue" value="0.7" min="0" max="2" step="0.1" disabled />
+                            <input type="number" id="asstTemperatureValue" value="0.7" min="0" max="2" step="0.1" disabled />
                         </div>
                     </div>
                     <div class="param-row">
                         <label>top_p</label>
                         <div class="switch-wrap">
-                            <input type="checkbox" id="enableTopP" />
+                            <input type="checkbox" id="asstEnableTopP" />
                             <span style="font-size:12px;color:var(--text-secondary);">启用</span>
-                            <input type="number" id="topPValue" value="1" min="0" max="1" step="0.05" disabled />
+                            <input type="number" id="asstTopPValue" value="1" min="0" max="1" step="0.05" disabled />
                         </div>
                         <div class="hint">通常与temperature二选一</div>
                     </div>
                     <div class="param-row">
                         <label>frequency_penalty</label>
                         <div class="switch-wrap">
-                            <input type="checkbox" id="enableFrequencyPenalty" />
+                            <input type="checkbox" id="asstEnableFrequencyPenalty" />
                             <span style="font-size:12px;color:var(--text-secondary);">启用</span>
-                            <input type="number" id="frequencyPenaltyValue" value="0.0" min="-2" max="2" step="0.1" disabled />
+                            <input type="number" id="asstFrequencyPenaltyValue" value="0.0" min="-2" max="2" step="0.1" disabled />
                         </div>
-                        <div class="hint">惩罚高频重复词汇，范围 -2.0 ~ 2.0</div>
                     </div>
                     <div class="param-row">
                         <label>presence_penalty</label>
                         <div class="switch-wrap">
-                            <input type="checkbox" id="enablePresencePenalty" />
+                            <input type="checkbox" id="asstEnablePresencePenalty" />
                             <span style="font-size:12px;color:var(--text-secondary);">启用</span>
-                            <input type="number" id="presencePenaltyValue" value="0.0" min="-2" max="2" step="0.1" disabled />
+                            <input type="number" id="asstPresencePenaltyValue" value="0.0" min="-2" max="2" step="0.1" disabled />
                         </div>
-                        <div class="hint">鼓励谈论新话题，范围 -2.0 ~ 2.0</div>
                     </div>
                     <div style="font-size:12px;color:var(--text-secondary);margin-top:8px;">
-                        关闭参数将使用API默认值。
+                        关闭的参数将使用 API 默认值。
                     </div>
                 </div>
             </div>
-
             <div class="actions">
-                <button class="btn-cancel" id="btnSettingsCancel">取消</button>
-                <button class="btn-confirm" id="btnSettingsConfirm">保存</button>
+                <button class="btn-cancel" id="btnAssistantCancel">取消</button>
+                <button class="btn-confirm" id="btnAssistantConfirm">保存</button>
             </div>
         </div>
     </div>
@@ -804,6 +921,8 @@
             'use strict';
 
             const $ = (id) => document.getElementById(id);
+
+            // ---------- DOM ----------
             const sidebar = $('sidebar');
             const sidebarOverlay = $('sidebarOverlay');
             const btnMenu = $('btnMenu');
@@ -821,60 +940,97 @@
             const btnSettingsConfirm = $('btnSettingsConfirm');
             const modelFlash = $('modelFlash');
             const modelPro = $('modelPro');
+            const headerAssistantBtn = $('headerAssistantBtn');
+            const assistantBadgeName = $('assistantBadgeName');
 
-            const paramsToggle = $('paramsToggle');
-            const paramsBody = $('paramsBody');
-            const enableMaxTokens = $('enableMaxTokens');
-            const maxTokensValue = $('maxTokensValue');
-            const enableTemperature = $('enableTemperature');
-            const temperatureValue = $('temperatureValue');
-            const enableTopP = $('enableTopP');
-            const topPValue = $('topPValue');
-            const enableFrequencyPenalty = $('enableFrequencyPenalty');
-            const frequencyPenaltyValue = $('frequencyPenaltyValue');
-            const enablePresencePenalty = $('enablePresencePenalty');
-            const presencePenaltyValue = $('presencePenaltyValue');
+            // 切换助手弹窗
+            const switchAssistantModal = $('switchAssistantModal');
+            const switchAssistantList = $('switchAssistantList');
+            const btnSwitchCancel = $('btnSwitchCancel');
+            const btnManageAssistants = $('btnManageAssistants');
 
-            const STORAGE_KEY = 'deepseek_chat_data';
+            // 管理助手弹窗
+            const assistantManagerModal = $('assistantManagerModal');
+            const managerList = $('managerList');
+            const btnNewAssistantFromManager = $('btnNewAssistantFromManager');
+            const btnManagerClose = $('btnManagerClose');
+
+            // 编辑助手弹窗
+            const assistantModal = $('assistantModal');
+            const editAssistantId = $('editAssistantId');
+            const editAssistantName = $('editAssistantName');
+            const editSystemPrompt = $('editSystemPrompt');
+            const asstParamsToggle = $('asstParamsToggle');
+            const asstParamsBody = $('asstParamsBody');
+            const asstEnableMaxTokens = $('asstEnableMaxTokens');
+            const asstMaxTokensValue = $('asstMaxTokensValue');
+            const asstEnableTemperature = $('asstEnableTemperature');
+            const asstTemperatureValue = $('asstTemperatureValue');
+            const asstEnableTopP = $('asstEnableTopP');
+            const asstTopPValue = $('asstTopPValue');
+            const asstEnableFrequencyPenalty = $('asstEnableFrequencyPenalty');
+            const asstFrequencyPenaltyValue = $('asstFrequencyPenaltyValue');
+            const asstEnablePresencePenalty = $('asstEnablePresencePenalty');
+            const asstPresencePenaltyValue = $('asstPresencePenaltyValue');
+            const btnAssistantCancel = $('btnAssistantCancel');
+            const btnAssistantConfirm = $('btnAssistantConfirm');
+            const assistantModalTitle = $('assistantModalTitle');
+
+            const STORAGE_KEY = 'deepseek_chat_data_v3';
             const API_URL = 'https://api.deepseek.com/v1/chat/completions';
+
+            // ---------- 默认助手 ----------
+            const DEFAULT_ASSISTANT = {
+                id: 'default',
+                name: '默认助手',
+                systemPrompt: '',
+                temperatureEnabled: false,
+                temperature: 0.7,
+                maxTokensEnabled: false,
+                maxTokens: 4096,
+                topPEnabled: false,
+                topP: 1,
+                frequencyPenaltyEnabled: false,
+                frequencyPenalty: 0.0,
+                presencePenaltyEnabled: false,
+                presencePenalty: 0.0,
+                createdAt: Date.now(),
+                updatedAt: Date.now()
+            };
 
             let state = {
                 apiKey: '',
                 currentModel: 'deepseek-chat',
                 sessions: {},
                 currentSessionId: null,
+                assistants: {},
                 isLoading: false,
                 sidebarOpen: false,
-                params: {
-                    maxTokensEnabled: false,
-                    maxTokens: 4096,
-                    temperatureEnabled: false,
-                    temperature: 0.7,
-                    topPEnabled: false,
-                    topP: 1,
-                    frequencyPenaltyEnabled: false,
-                    frequencyPenalty: 0.0,
-                    presencePenaltyEnabled: false,
-                    presencePenalty: 0.0,
-                }
+                // 记录从哪个弹窗进入编辑，以便保存后返回
+                editingFromManager: false,
             };
+
+            let asstParamsOpen = false;
 
             // ---------- 工具 ----------
             function generateId() {
                 return Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
             }
+
             function formatTime(ts) {
                 const d = new Date(ts);
                 const h = d.getHours().toString().padStart(2, '0');
                 const m = d.getMinutes().toString().padStart(2, '0');
                 return h + ':' + m;
             }
+
             function formatDate(ts) {
                 const d = new Date(ts);
                 const month = (d.getMonth() + 1).toString().padStart(2, '0');
                 const day = d.getDate().toString().padStart(2, '0');
                 return month + '/' + day + ' ' + formatTime(ts);
             }
+
             function escapeHtml(text) {
                 if (!text) return '';
                 const div = document.createElement('div');
@@ -882,7 +1038,12 @@
                 return div.innerHTML;
             }
 
-            // ---------- Markdown 渲染 ----------
+            function truncate(str, len) {
+                if (!str) return '';
+                return str.length > len ? str.slice(0, len) + '…' : str;
+            }
+
+            // ---------- Markdown ----------
             function renderMessageContent(text) {
                 if (!text) return '';
                 marked.setOptions({ breaks: true, gfm: true });
@@ -899,16 +1060,22 @@
                         state.currentModel = data.currentModel || 'deepseek-chat';
                         state.sessions = data.sessions || {};
                         state.currentSessionId = data.currentSessionId || null;
-                        if (data.params) {
-                            state.params = { ...state.params, ...data.params };
+                        state.assistants = data.assistants || {};
+
+                        if (!state.assistants['default']) {
+                            state.assistants['default'] = JSON.parse(JSON.stringify(DEFAULT_ASSISTANT));
                         }
+
                         for (const sid in state.sessions) {
                             const s = state.sessions[sid];
                             if (s.messages) {
                                 s.messages = s.messages.filter(m => m.role && m.content !== undefined);
                             }
+                            if (!s.assistantId || !state.assistants[s.assistantId]) {
+                                s.assistantId = 'default';
+                            }
                         }
-                        // 确保当前会话有效
+
                         if (state.currentSessionId && !state.sessions[state.currentSessionId]) {
                             state.currentSessionId = null;
                         }
@@ -924,15 +1091,17 @@
                             }
                         }
                     } else {
+                        state.assistants['default'] = JSON.parse(JSON.stringify(DEFAULT_ASSISTANT));
                         createNewSession();
                     }
+                    updateModelUI();
+                    updateHeaderAssistant();
                 } catch (e) {
                     console.warn('加载数据失败，重置', e);
                     state.sessions = {};
+                    state.assistants = { 'default': JSON.parse(JSON.stringify(DEFAULT_ASSISTANT)) };
                     createNewSession();
                 }
-                updateModelUI();
-                syncParamUI();
             }
 
             function saveData() {
@@ -942,71 +1111,107 @@
                         currentModel: state.currentModel,
                         sessions: state.sessions,
                         currentSessionId: state.currentSessionId,
-                        params: state.params,
+                        assistants: state.assistants,
                     };
                     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
                 } catch (e) {
-                    console.warn('保存数据失败', e);
+                    console.warn('保存失败', e);
                 }
             }
 
-            // ---------- 参数UI ----------
-            function syncParamUI() {
-                enableMaxTokens.checked = state.params.maxTokensEnabled;
-                maxTokensValue.value = state.params.maxTokens;
-                maxTokensValue.disabled = !state.params.maxTokensEnabled;
-                enableTemperature.checked = state.params.temperatureEnabled;
-                temperatureValue.value = state.params.temperature;
-                temperatureValue.disabled = !state.params.temperatureEnabled;
-                enableTopP.checked = state.params.topPEnabled;
-                topPValue.value = state.params.topP;
-                topPValue.disabled = !state.params.topPEnabled;
-                enableFrequencyPenalty.checked = state.params.frequencyPenaltyEnabled;
-                frequencyPenaltyValue.value = state.params.frequencyPenalty;
-                frequencyPenaltyValue.disabled = !state.params.frequencyPenaltyEnabled;
-                enablePresencePenalty.checked = state.params.presencePenaltyEnabled;
-                presencePenaltyValue.value = state.params.presencePenalty;
-                presencePenaltyValue.disabled = !state.params.presencePenaltyEnabled;
-            }
-            function collectParamFromUI() {
-                state.params.maxTokensEnabled = enableMaxTokens.checked;
-                state.params.maxTokens = parseInt(maxTokensValue.value, 10) || 4096;
-                state.params.temperatureEnabled = enableTemperature.checked;
-                state.params.temperature = parseFloat(temperatureValue.value) || 0.7;
-                state.params.topPEnabled = enableTopP.checked;
-                state.params.topP = parseFloat(topPValue.value) || 1;
-                state.params.frequencyPenaltyEnabled = enableFrequencyPenalty.checked;
-                state.params.frequencyPenalty = parseFloat(frequencyPenaltyValue.value) || 0.0;
-                state.params.presencePenaltyEnabled = enablePresencePenalty.checked;
-                state.params.presencePenalty = parseFloat(presencePenaltyValue.value) || 0.0;
+            // ---------- 助手函数 ----------
+            function getAssistant(id) {
+                return state.assistants[id] || state.assistants['default'];
             }
 
-            let paramsOpen = false;
-            paramsToggle.addEventListener('click', () => {
-                paramsOpen = !paramsOpen;
-                paramsToggle.classList.toggle('open', paramsOpen);
-                paramsBody.classList.toggle('open', paramsOpen);
-                const arrow = paramsToggle.querySelector('span');
-                arrow.textContent = paramsOpen ? '▼' : '▶';
-            });
-            enableMaxTokens.addEventListener('change', () => { maxTokensValue.disabled = !enableMaxTokens.checked; });
-            enableTemperature.addEventListener('change', () => { temperatureValue.disabled = !enableTemperature.checked; });
-            enableTopP.addEventListener('change', () => { topPValue.disabled = !enableTopP.checked; });
-            enableFrequencyPenalty.addEventListener('change', () => { frequencyPenaltyValue.disabled = !enableFrequencyPenalty.checked; });
-            enablePresencePenalty.addEventListener('change', () => { presencePenaltyValue.disabled = !enablePresencePenalty.checked; });
+            function getCurrentAssistant() {
+                const session = getCurrentSession();
+                if (session) return getAssistant(session.assistantId);
+                return state.assistants['default'];
+            }
 
-            // ---------- 会话管理 ----------
+            function createAssistant(name, systemPrompt, params) {
+                const id = generateId();
+                const asst = {
+                    id,
+                    name: name || '新助手',
+                    systemPrompt: systemPrompt || '',
+                    temperatureEnabled: params?.temperatureEnabled || false,
+                    temperature: params?.temperature ?? 0.7,
+                    maxTokensEnabled: params?.maxTokensEnabled || false,
+                    maxTokens: params?.maxTokens ?? 4096,
+                    topPEnabled: params?.topPEnabled || false,
+                    topP: params?.topP ?? 1,
+                    frequencyPenaltyEnabled: params?.frequencyPenaltyEnabled || false,
+                    frequencyPenalty: params?.frequencyPenalty ?? 0.0,
+                    presencePenaltyEnabled: params?.presencePenaltyEnabled || false,
+                    presencePenalty: params?.presencePenalty ?? 0.0,
+                    createdAt: Date.now(),
+                    updatedAt: Date.now()
+                };
+                state.assistants[id] = asst;
+                saveData();
+                return id;
+            }
+
+            function updateAssistant(id, data) {
+                const asst = state.assistants[id];
+                if (!asst) return;
+                if (data.name !== undefined) asst.name = data.name;
+                if (data.systemPrompt !== undefined) asst.systemPrompt = data.systemPrompt;
+                if (data.temperatureEnabled !== undefined) asst.temperatureEnabled = data.temperatureEnabled;
+                if (data.temperature !== undefined) asst.temperature = data.temperature;
+                if (data.maxTokensEnabled !== undefined) asst.maxTokensEnabled = data.maxTokensEnabled;
+                if (data.maxTokens !== undefined) asst.maxTokens = data.maxTokens;
+                if (data.topPEnabled !== undefined) asst.topPEnabled = data.topPEnabled;
+                if (data.topP !== undefined) asst.topP = data.topP;
+                if (data.frequencyPenaltyEnabled !== undefined) asst.frequencyPenaltyEnabled = data.frequencyPenaltyEnabled;
+                if (data.frequencyPenalty !== undefined) asst.frequencyPenalty = data.frequencyPenalty;
+                if (data.presencePenaltyEnabled !== undefined) asst.presencePenaltyEnabled = data.presencePenaltyEnabled;
+                if (data.presencePenalty !== undefined) asst.presencePenalty = data.presencePenalty;
+                asst.updatedAt = Date.now();
+                saveData();
+            }
+
+            function deleteAssistant(id) {
+                if (id === 'default') return;
+                if (!state.assistants[id]) return;
+                for (const sid in state.sessions) {
+                    if (state.sessions[sid].assistantId === id) {
+                        state.sessions[sid].assistantId = 'default';
+                    }
+                }
+                delete state.assistants[id];
+                saveData();
+            }
+
+            function setSessionAssistant(sessionId, assistantId) {
+                const session = state.sessions[sessionId];
+                if (!session) return;
+                if (!state.assistants[assistantId]) return;
+                session.assistantId = assistantId;
+                session.updatedAt = Date.now();
+                saveData();
+            }
+
+            // ---------- 会话 ----------
             function createNewSession() {
                 const id = generateId();
                 const session = {
-                    id, title: '新对话', model: state.currentModel,
-                    messages: [], createdAt: Date.now(), updatedAt: Date.now()
+                    id,
+                    title: '新对话',
+                    model: state.currentModel,
+                    messages: [],
+                    assistantId: 'default',
+                    createdAt: Date.now(),
+                    updatedAt: Date.now()
                 };
                 state.sessions[id] = session;
                 state.currentSessionId = id;
                 saveData();
                 renderSessionList();
                 renderChat();
+                updateHeaderAssistant();
                 return id;
             }
 
@@ -1024,6 +1229,7 @@
                 saveData();
                 renderSessionList();
                 renderChat();
+                updateHeaderAssistant();
             }
 
             function switchSession(id) {
@@ -1034,6 +1240,7 @@
                 saveData();
                 renderSessionList();
                 renderChat();
+                updateHeaderAssistant();
                 closeSidebar();
             }
 
@@ -1069,17 +1276,25 @@
 
             async function callDeepSeek(messages) {
                 if (!state.apiKey) throw new Error('请先设置 API Key');
-                const recentMessages = messages.slice(-30);
+                const session = getCurrentSession();
+                const assistant = getAssistant(session ? session.assistantId : 'default');
+                const fullMessages = [];
+                if (assistant.systemPrompt && assistant.systemPrompt.trim()) {
+                    fullMessages.push({ role: 'system', content: assistant.systemPrompt.trim() });
+                }
+                const recent = messages.slice(-30);
+                fullMessages.push(...recent.map(m => ({ role: m.role, content: m.content })));
+
                 const body = {
                     model: state.currentModel,
-                    messages: recentMessages.map(m => ({ role: m.role, content: m.content })),
+                    messages: fullMessages,
                     stream: false,
                 };
-                if (state.params.maxTokensEnabled) body.max_tokens = state.params.maxTokens;
-                if (state.params.temperatureEnabled) body.temperature = state.params.temperature;
-                if (state.params.topPEnabled) body.top_p = state.params.topP;
-                if (state.params.frequencyPenaltyEnabled) body.frequency_penalty = state.params.frequencyPenalty;
-                if (state.params.presencePenaltyEnabled) body.presence_penalty = state.params.presencePenalty;
+                if (assistant.maxTokensEnabled) body.max_tokens = assistant.maxTokens;
+                if (assistant.temperatureEnabled) body.temperature = assistant.temperature;
+                if (assistant.topPEnabled) body.top_p = assistant.topP;
+                if (assistant.frequencyPenaltyEnabled) body.frequency_penalty = assistant.frequencyPenalty;
+                if (assistant.presencePenaltyEnabled) body.presence_penalty = assistant.presencePenalty;
 
                 const response = await fetch(API_URL, {
                     method: 'POST',
@@ -1089,13 +1304,9 @@
                     },
                     body: JSON.stringify(body),
                 });
-
                 if (!response.ok) {
                     let errMsg = `API 请求失败 (${response.status})`;
-                    try {
-                        const errData = await response.json();
-                        if (errData.error && errData.error.message) errMsg = errData.error.message;
-                    } catch (e) {}
+                    try { const errData = await response.json(); if (errData.error?.message) errMsg = errData.error.message; } catch (e) {}
                     throw new Error(errMsg);
                 }
                 const data = await response.json();
@@ -1108,15 +1319,9 @@
             async function sendMessage() {
                 const text = inputBox.value.trim();
                 if (!text || state.isLoading) return;
-
                 const session = getCurrentSession();
-                if (!session) {
-                    createNewSession();
-                }
-                if (!state.apiKey.trim()) {
-                    openSettings();
-                    return;
-                }
+                if (!session) { createNewSession(); }
+                if (!state.apiKey.trim()) { openSettings(); return; }
 
                 inputBox.value = '';
                 autoResizeInput();
@@ -1205,6 +1410,11 @@
                 chatArea.innerHTML = '';
                 if (!session || session.messages.length === 0) {
                     emptyState.style.display = 'flex';
+                    const asst = getCurrentAssistant();
+                    emptyState.querySelector('h3').textContent = `🤖 ${asst.name}`;
+                    emptyState.querySelector('p').textContent = asst.systemPrompt ?
+                        `提示词：${truncate(asst.systemPrompt, 80)}` :
+                        '选择模型，输入你的问题，DeepSeek 将为你解答。';
                     return;
                 }
                 emptyState.style.display = 'none';
@@ -1212,12 +1422,7 @@
                     if (msg.loading) {
                         const div = document.createElement('div');
                         div.className = 'message ai';
-                        div.innerHTML = `
-                            <div class="bubble">
-                                <div class="loading-dots"><span></span><span></span><span></span></div>
-                            </div>
-                            <div class="time">思考中…</div>
-                        `;
+                        div.innerHTML = `<div class="bubble"><div class="loading-dots"><span></span><span></span><span></span></div></div><div class="time">思考中…</div>`;
                         chatArea.appendChild(div);
                         continue;
                     }
@@ -1227,10 +1432,7 @@
                     div.className = `message ${role}`;
                     const timeStr = msg.timestamp ? formatTime(msg.timestamp) : '';
                     const extraStyle = isError ? ' style="color:#E74C3C;"' : '';
-                    div.innerHTML = `
-                        <div class="bubble"${extraStyle}>${renderMessageContent(msg.content)}</div>
-                        <div class="time">${timeStr}</div>
-                    `;
+                    div.innerHTML = `<div class="bubble"${extraStyle}>${renderMessageContent(msg.content)}</div><div class="time">${timeStr}</div>`;
                     chatArea.appendChild(div);
                 }
                 scrollToBottom();
@@ -1247,36 +1449,232 @@
                 modelSelect.value = state.currentModel;
             }
 
+            function updateHeaderAssistant() {
+                const asst = getCurrentAssistant();
+                assistantBadgeName.textContent = '🤖 ' + asst.name;
+            }
+
+            // ---------- 切换助手弹窗 ----------
+            function openSwitchAssistant() {
+                const session = getCurrentSession();
+                if (!session) return;
+                const currentId = session.assistantId || 'default';
+                renderSwitchList(currentId);
+                switchAssistantModal.classList.add('open');
+            }
+
+            function renderSwitchList(currentId) {
+                const ids = Object.keys(state.assistants);
+                ids.sort((a, b) => {
+                    if (a === 'default') return -1;
+                    if (b === 'default') return 1;
+                    return (state.assistants[b].updatedAt || 0) - (state.assistants[a].updatedAt || 0);
+                });
+                let html = '';
+                for (const id of ids) {
+                    const a = state.assistants[id];
+                    const active = id === currentId;
+                    const hasPrompt = a.systemPrompt ? ' 📝' : '';
+                    html += `
+                        <div class="assistant-item ${active ? 'active' : ''}" data-id="${id}" style="cursor:pointer;padding:10px 14px;border-radius:var(--radius-sm);display:flex;align-items:center;gap:8px;transition:background 0.2s;">
+                            <span>🤖</span>
+                            <span style="flex:1;font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(a.name)}${hasPrompt}</span>
+                            ${active ? '<span style="font-size:12px;color:var(--primary);font-weight:600;">✓</span>' : ''}
+                        </div>
+                    `;
+                }
+                switchAssistantList.innerHTML = html;
+                switchAssistantList.querySelectorAll('.assistant-item').forEach(el => {
+                    el.addEventListener('click', () => {
+                        const id = el.dataset.id;
+                        if (id && state.currentSessionId) {
+                            setSessionAssistant(state.currentSessionId, id);
+                            updateHeaderAssistant();
+                            renderChat();
+                            switchAssistantModal.classList.remove('open');
+                        }
+                    });
+                });
+            }
+
+            // ---------- 管理助手弹窗 ----------
+            function openAssistantManager() {
+                renderManagerList();
+                assistantManagerModal.classList.add('open');
+            }
+
+            function renderManagerList() {
+                const ids = Object.keys(state.assistants);
+                ids.sort((a, b) => {
+                    if (a === 'default') return -1;
+                    if (b === 'default') return 1;
+                    return (state.assistants[b].updatedAt || 0) - (state.assistants[a].updatedAt || 0);
+                });
+                let html = '';
+                for (const id of ids) {
+                    const a = state.assistants[id];
+                    const isDefault = id === 'default';
+                    html += `
+                        <div class="manager-item">
+                            <span>🤖</span>
+                            <span class="name">${escapeHtml(a.name)}</span>
+                            ${isDefault ? '<span class="default-badge">默认</span>' : ''}
+                            <div class="actions">
+                                <button class="edit-btn" data-id="${id}" title="编辑">✎</button>
+                                ${isDefault ? '' : `<button class="del-btn" data-id="${id}" title="删除">✕</button>`}
+                            </div>
+                        </div>
+                    `;
+                }
+                managerList.innerHTML = html;
+                managerList.querySelectorAll('.edit-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const id = btn.dataset.id;
+                        if (id) {
+                            state.editingFromManager = true;
+                            assistantManagerModal.classList.remove('open');
+                            openAssistantEditor(id);
+                        }
+                    });
+                });
+                managerList.querySelectorAll('.del-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const id = btn.dataset.id;
+                        if (id && id !== 'default' && confirm(`确认删除助手「${state.assistants[id]?.name}」？`)) {
+                            deleteAssistant(id);
+                            renderManagerList();
+                            updateHeaderAssistant();
+                            renderChat();
+                        }
+                    });
+                });
+            }
+
+            // ---------- 编辑助手弹窗 ----------
+            function openAssistantEditor(id) {
+                const asst = state.assistants[id];
+                if (!asst) return;
+                editAssistantId.value = id;
+                editAssistantName.value = asst.name;
+                editSystemPrompt.value = asst.systemPrompt || '';
+                asstEnableMaxTokens.checked = asst.maxTokensEnabled;
+                asstMaxTokensValue.value = asst.maxTokens;
+                asstMaxTokensValue.disabled = !asst.maxTokensEnabled;
+                asstEnableTemperature.checked = asst.temperatureEnabled;
+                asstTemperatureValue.value = asst.temperature;
+                asstTemperatureValue.disabled = !asst.temperatureEnabled;
+                asstEnableTopP.checked = asst.topPEnabled;
+                asstTopPValue.value = asst.topP;
+                asstTopPValue.disabled = !asst.topPEnabled;
+                asstEnableFrequencyPenalty.checked = asst.frequencyPenaltyEnabled;
+                asstFrequencyPenaltyValue.value = asst.frequencyPenalty;
+                asstFrequencyPenaltyValue.disabled = !asst.frequencyPenaltyEnabled;
+                asstEnablePresencePenalty.checked = asst.presencePenaltyEnabled;
+                asstPresencePenaltyValue.value = asst.presencePenalty;
+                asstPresencePenaltyValue.disabled = !asst.presencePenaltyEnabled;
+                assistantModalTitle.textContent = id === 'default' ? '🤖 默认助手' : '🤖 编辑助手';
+                asstParamsOpen = false;
+                asstParamsToggle.classList.remove('open');
+                asstParamsBody.classList.remove('open');
+                asstParamsToggle.querySelector('span').textContent = '▶';
+                assistantModal.classList.add('open');
+            }
+
+            function openNewAssistantEditor() {
+                editAssistantId.value = '';
+                editAssistantName.value = '';
+                editSystemPrompt.value = '';
+                asstEnableMaxTokens.checked = false;
+                asstMaxTokensValue.value = 4096;
+                asstMaxTokensValue.disabled = true;
+                asstEnableTemperature.checked = false;
+                asstTemperatureValue.value = 0.7;
+                asstTemperatureValue.disabled = true;
+                asstEnableTopP.checked = false;
+                asstTopPValue.value = 1;
+                asstTopPValue.disabled = true;
+                asstEnableFrequencyPenalty.checked = false;
+                asstFrequencyPenaltyValue.value = 0.0;
+                asstFrequencyPenaltyValue.disabled = true;
+                asstEnablePresencePenalty.checked = false;
+                asstPresencePenaltyValue.value = 0.0;
+                asstPresencePenaltyValue.disabled = true;
+                assistantModalTitle.textContent = '🤖 新建助手';
+                asstParamsOpen = false;
+                asstParamsToggle.classList.remove('open');
+                asstParamsBody.classList.remove('open');
+                asstParamsToggle.querySelector('span').textContent = '▶';
+                assistantModal.classList.add('open');
+            }
+
+            function collectAssistantFormData() {
+                return {
+                    name: editAssistantName.value.trim() || '未命名助手',
+                    systemPrompt: editSystemPrompt.value.trim(),
+                    maxTokensEnabled: asstEnableMaxTokens.checked,
+                    maxTokens: parseInt(asstMaxTokensValue.value, 10) || 4096,
+                    temperatureEnabled: asstEnableTemperature.checked,
+                    temperature: parseFloat(asstTemperatureValue.value) || 0.7,
+                    topPEnabled: asstEnableTopP.checked,
+                    topP: parseFloat(asstTopPValue.value) || 1,
+                    frequencyPenaltyEnabled: asstEnableFrequencyPenalty.checked,
+                    frequencyPenalty: parseFloat(asstFrequencyPenaltyValue.value) || 0.0,
+                    presencePenaltyEnabled: asstEnablePresencePenalty.checked,
+                    presencePenalty: parseFloat(asstPresencePenaltyValue.value) || 0.0,
+                };
+            }
+
+            function closeAssistantEditor() {
+                assistantModal.classList.remove('open');
+            }
+
             // ---------- UI 辅助 ----------
             function autoResizeInput() {
                 inputBox.style.height = 'auto';
                 inputBox.style.height = Math.min(inputBox.scrollHeight, 100) + 'px';
             }
+
             function openSettings() {
                 apiKeyInput.value = state.apiKey || '';
                 modelSelect.value = state.currentModel;
-                syncParamUI();
                 settingsModal.classList.add('open');
                 setTimeout(() => apiKeyInput.focus(), 200);
             }
+
             function closeSettings() { settingsModal.classList.remove('open'); }
-            function openSidebar() { state.sidebarOpen = true; sidebar.classList.add('open'); sidebarOverlay.classList.add('open'); }
-            function closeSidebar() { state.sidebarOpen = false; sidebar.classList.remove('open'); sidebarOverlay.classList.remove('open'); }
+
+            function openSidebar() {
+                state.sidebarOpen = true;
+                sidebar.classList.add('open');
+                sidebarOverlay.classList.add('open');
+            }
+
+            function closeSidebar() {
+                state.sidebarOpen = false;
+                sidebar.classList.remove('open');
+                sidebarOverlay.classList.remove('open');
+            }
+
             function toggleSidebar() { state.sidebarOpen ? closeSidebar() : openSidebar(); }
 
             // ---------- 事件绑定 ----------
             btnMenu.addEventListener('click', toggleSidebar);
             sidebarOverlay.addEventListener('click', closeSidebar);
+
             btnNewSession.addEventListener('click', () => {
                 createNewSession();
                 closeSidebar();
                 inputBox.focus();
             });
+
             btnSend.addEventListener('click', sendMessage);
             inputBox.addEventListener('input', autoResizeInput);
             inputBox.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
             });
+
             modelFlash.addEventListener('click', () => {
                 state.currentModel = 'deepseek-chat';
                 const session = getCurrentSession();
@@ -1291,6 +1689,7 @@
                 updateModelUI();
                 saveData();
             });
+
             btnSettings.addEventListener('click', openSettings);
             btnSettingsCancel.addEventListener('click', closeSettings);
             btnSettingsConfirm.addEventListener('click', () => {
@@ -1301,7 +1700,6 @@
                 state.currentModel = model;
                 const session = getCurrentSession();
                 if (session) session.model = model;
-                collectParamFromUI();
                 updateModelUI();
                 saveData();
                 closeSettings();
@@ -1309,21 +1707,81 @@
                 inputBox.focus();
             });
             settingsModal.addEventListener('click', (e) => { if (e.target === settingsModal) closeSettings(); });
+
+            // 头部助手按钮
+            headerAssistantBtn.addEventListener('click', openSwitchAssistant);
+
+            // 切换助手弹窗
+            btnSwitchCancel.addEventListener('click', () => { switchAssistantModal.classList.remove('open'); });
+            btnManageAssistants.addEventListener('click', () => {
+                switchAssistantModal.classList.remove('open');
+                openAssistantManager();
+            });
+            switchAssistantModal.addEventListener('click', (e) => { if (e.target === switchAssistantModal) switchAssistantModal.classList.remove('open'); });
+
+            // 管理助手弹窗
+            btnManagerClose.addEventListener('click', () => { assistantManagerModal.classList.remove('open'); });
+            btnNewAssistantFromManager.addEventListener('click', () => {
+                state.editingFromManager = true;
+                assistantManagerModal.classList.remove('open');
+                openNewAssistantEditor();
+            });
+            assistantManagerModal.addEventListener('click', (e) => { if (e.target === assistantManagerModal) assistantManagerModal.classList.remove('open'); });
+
+            // 编辑助手弹窗
+            asstParamsToggle.addEventListener('click', () => {
+                asstParamsOpen = !asstParamsOpen;
+                asstParamsToggle.classList.toggle('open', asstParamsOpen);
+                asstParamsBody.classList.toggle('open', asstParamsOpen);
+                asstParamsToggle.querySelector('span').textContent = asstParamsOpen ? '▼' : '▶';
+            });
+            asstEnableMaxTokens.addEventListener('change', () => { asstMaxTokensValue.disabled = !asstEnableMaxTokens.checked; });
+            asstEnableTemperature.addEventListener('change', () => { asstTemperatureValue.disabled = !asstEnableTemperature.checked; });
+            asstEnableTopP.addEventListener('change', () => { asstTopPValue.disabled = !asstEnableTopP.checked; });
+            asstEnableFrequencyPenalty.addEventListener('change', () => { asstFrequencyPenaltyValue.disabled = !asstEnableFrequencyPenalty.checked; });
+            asstEnablePresencePenalty.addEventListener('change', () => { asstPresencePenaltyValue.disabled = !asstEnablePresencePenalty.checked; });
+
+            btnAssistantCancel.addEventListener('click', closeAssistantEditor);
+            btnAssistantConfirm.addEventListener('click', () => {
+                const id = editAssistantId.value;
+                const data = collectAssistantFormData();
+                if (!data.name) { alert('请输入助手名称'); return; }
+                if (id && state.assistants[id]) {
+                    updateAssistant(id, data);
+                } else {
+                    const newId = createAssistant(data.name, data.systemPrompt, data);
+                    const session = getCurrentSession();
+                    if (session) {
+                        if (confirm(`是否将当前对话切换到「${data.name}」？`)) {
+                            setSessionAssistant(session.id, newId);
+                            updateHeaderAssistant();
+                            renderChat();
+                        }
+                    }
+                }
+                closeAssistantEditor();
+                // 如果是从管理弹窗来的，返回管理弹窗
+                if (state.editingFromManager) {
+                    state.editingFromManager = false;
+                    openAssistantManager();
+                }
+                updateHeaderAssistant();
+                renderAssistantList(); // 更新切换弹窗内列表（如果打开的话）
+            });
+            assistantModal.addEventListener('click', (e) => { if (e.target === assistantModal) closeAssistantEditor(); });
+
             window.addEventListener('resize', scrollToBottom);
 
             // ---------- 初始化 ----------
             function init() {
                 loadData();
-
-                // 关键逻辑：如果当前会话已有消息（非空），则新建一个空对话作为新开始
                 const current = getCurrentSession();
                 if (current && current.messages.length > 0) {
                     createNewSession();
                 }
-                // 若当前会话是空的，则保留它，不新建
-
                 if (state.apiKey) apiKeyInput.value = state.apiKey;
                 updateModelUI();
+                updateHeaderAssistant();
                 renderSessionList();
                 renderChat();
                 scrollToBottom();
