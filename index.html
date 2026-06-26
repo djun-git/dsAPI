@@ -1070,7 +1070,6 @@
                         // ---- 确保至少有一个空白对话 ----
                         const emptySessions = Object.keys(state.sessions).filter(id => state.sessions[id].messages.length === 0);
                         if (emptySessions.length === 0) {
-                            // 没有空白对话，创建一个
                             const newId = generateId();
                             state.sessions[newId] = {
                                 id: newId,
@@ -1083,13 +1082,11 @@
                             };
                             state.currentSessionId = newId;
                         } else {
-                            // 有空白对话，选择最新空白对话
                             emptySessions.sort((a, b) => (state.sessions[b].updatedAt || 0) - (state.sessions[a].updatedAt || 0));
                             state.currentSessionId = emptySessions[0];
                         }
                         // ---- 结束 ----
 
-                        // 确保当前会话有效（理论上已经保证）
                         if (!state.sessions[state.currentSessionId]) {
                             const newId = generateId();
                             state.sessions[newId] = {
@@ -1104,7 +1101,6 @@
                             state.currentSessionId = newId;
                         }
                     } else {
-                        // 全新初始状态
                         state.assistants['default'] = JSON.parse(JSON.stringify(DEFAULT_ASSISTANT));
                         const newId = generateId();
                         state.sessions[newId] = {
@@ -1119,7 +1115,7 @@
                         state.currentSessionId = newId;
                     }
 
-                    saveData(); // 保存可能的新建/切换
+                    saveData();
                     updateModelUI();
                     updateHeaderAssistant();
                 } catch (e) {
@@ -1259,13 +1255,11 @@
                 const wasCurrent = (id === state.currentSessionId);
                 delete state.sessions[id];
 
-                // 如果删除后没有空白对话，创建一个
                 const emptySessions = Object.keys(state.sessions).filter(sid => state.sessions[sid].messages.length === 0);
                 if (emptySessions.length === 0) {
                     if (Object.keys(state.sessions).length === 0) {
                         createNewSession();
                     } else {
-                        // 存在非空但无空白，创建一个空白对话并设为当前
                         const newId = generateId();
                         state.sessions[newId] = {
                             id: newId,
@@ -1284,11 +1278,9 @@
                         return;
                     }
                 } else if (wasCurrent) {
-                    // 当前会话被删除，切换到最新空白
                     emptySessions.sort((a, b) => (state.sessions[b].updatedAt || 0) - (state.sessions[a].updatedAt || 0));
                     state.currentSessionId = emptySessions[0];
                 }
-                // else 当前会话没变，保持
                 saveData();
                 renderSessionList();
                 renderChat();
@@ -1334,6 +1326,7 @@
                 }
                 saveData();
                 renderChat();
+                // 只有新消息时才滚动到底部
                 scrollToBottom();
             }
 
@@ -1396,7 +1389,7 @@
                 sessionNow.updatedAt = Date.now();
                 saveData();
                 renderChat();
-                scrollToBottom();
+                scrollToBottom(); // 显示加载动画
 
                 state.isLoading = true;
                 btnSend.disabled = true;
@@ -1410,7 +1403,7 @@
                     sessionNow.updatedAt = Date.now();
                     saveData();
                     renderChat();
-                    scrollToBottom();
+                    scrollToBottom(); // 显示回复
                 } catch (err) {
                     const sess = getCurrentSession();
                     if (sess) {
@@ -1498,7 +1491,7 @@
                     div.innerHTML = `<div class="bubble"${extraStyle}>${renderMessageContent(msg.content)}</div><div class="time">${timeStr}</div>`;
                     chatArea.appendChild(div);
                 }
-                scrollToBottom();
+                // 移除自动滚动到底部，保持顶部
             }
 
             function scrollToBottom() {
@@ -1832,13 +1825,12 @@
             // ---------- 初始化 ----------
             function init() {
                 loadData();
-                // 此时已经确保存在空白对话且 currentSessionId 已正确设置
                 if (state.apiKey) apiKeyInput.value = state.apiKey;
                 updateModelUI();
                 updateHeaderAssistant();
                 renderSessionList();
                 renderChat();
-                scrollToBottom();
+                // 初始显示时滚动到顶部（已经是顶部，无需额外操作）
 
                 if (!state.apiKey) {
                     setTimeout(() => { openSettings(); }, 500);
