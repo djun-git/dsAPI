@@ -102,17 +102,13 @@
             justify-content: space-between;
             flex-shrink: 0;
         }
-        .sidebar-header h2 {
-            font-size: 17px;
-            font-weight: 600;
-        }
+        .sidebar-header h2 { font-size: 17px; font-weight: 600; }
         .sidebar-header .btn-new {
             background: var(--primary);
             color: #fff;
             border: none;
             border-radius: 50%;
-            width: 36px;
-            height: 36px;
+            width: 36px; height: 36px;
             font-size: 22px;
             display: flex;
             align-items: center;
@@ -352,7 +348,6 @@
         .message .bubble h1 { font-size: 1.5em; }
         .message .bubble h2 { font-size: 1.35em; }
         .message .bubble h3 { font-size: 1.2em; }
-        .message .bubble h4 { font-size: 1.1em; }
         .message .bubble p { margin: 0.4em 0; }
         .message .bubble ul, .message .bubble ol { margin: 0.4em 0; padding-left: 1.8em; }
         .message .bubble li { margin: 0.15em 0; }
@@ -943,19 +938,16 @@
             const headerAssistantBtn = $('headerAssistantBtn');
             const assistantBadgeName = $('assistantBadgeName');
 
-            // 切换助手弹窗
             const switchAssistantModal = $('switchAssistantModal');
             const switchAssistantList = $('switchAssistantList');
             const btnSwitchCancel = $('btnSwitchCancel');
             const btnManageAssistants = $('btnManageAssistants');
 
-            // 管理助手弹窗
             const assistantManagerModal = $('assistantManagerModal');
             const managerList = $('managerList');
             const btnNewAssistantFromManager = $('btnNewAssistantFromManager');
             const btnManagerClose = $('btnManagerClose');
 
-            // 编辑助手弹窗
             const assistantModal = $('assistantModal');
             const editAssistantId = $('editAssistantId');
             const editAssistantName = $('editAssistantName');
@@ -1006,7 +998,6 @@
                 assistants: {},
                 isLoading: false,
                 sidebarOpen: false,
-                // 记录从哪个弹窗进入编辑，以便保存后返回
                 editingFromManager: false,
             };
 
@@ -1076,31 +1067,79 @@
                             }
                         }
 
-                        if (state.currentSessionId && !state.sessions[state.currentSessionId]) {
-                            state.currentSessionId = null;
+                        // ---- 确保至少有一个空白对话 ----
+                        const emptySessions = Object.keys(state.sessions).filter(id => state.sessions[id].messages.length === 0);
+                        if (emptySessions.length === 0) {
+                            // 没有空白对话，创建一个
+                            const newId = generateId();
+                            state.sessions[newId] = {
+                                id: newId,
+                                title: '新对话',
+                                model: state.currentModel,
+                                messages: [],
+                                assistantId: 'default',
+                                createdAt: Date.now(),
+                                updatedAt: Date.now()
+                            };
+                            state.currentSessionId = newId;
+                        } else {
+                            // 有空白对话，选择最新空白对话
+                            emptySessions.sort((a, b) => (state.sessions[b].updatedAt || 0) - (state.sessions[a].updatedAt || 0));
+                            state.currentSessionId = emptySessions[0];
                         }
-                        if (Object.keys(state.sessions).length === 0) {
-                            createNewSession();
-                        }
-                        if (!state.currentSessionId) {
-                            const ids = Object.keys(state.sessions);
-                            if (ids.length > 0) {
-                                state.currentSessionId = ids[0];
-                            } else {
-                                createNewSession();
-                            }
+                        // ---- 结束 ----
+
+                        // 确保当前会话有效（理论上已经保证）
+                        if (!state.sessions[state.currentSessionId]) {
+                            const newId = generateId();
+                            state.sessions[newId] = {
+                                id: newId,
+                                title: '新对话',
+                                model: state.currentModel,
+                                messages: [],
+                                assistantId: 'default',
+                                createdAt: Date.now(),
+                                updatedAt: Date.now()
+                            };
+                            state.currentSessionId = newId;
                         }
                     } else {
+                        // 全新初始状态
                         state.assistants['default'] = JSON.parse(JSON.stringify(DEFAULT_ASSISTANT));
-                        createNewSession();
+                        const newId = generateId();
+                        state.sessions[newId] = {
+                            id: newId,
+                            title: '新对话',
+                            model: state.currentModel,
+                            messages: [],
+                            assistantId: 'default',
+                            createdAt: Date.now(),
+                            updatedAt: Date.now()
+                        };
+                        state.currentSessionId = newId;
                     }
+
+                    saveData(); // 保存可能的新建/切换
                     updateModelUI();
                     updateHeaderAssistant();
                 } catch (e) {
                     console.warn('加载数据失败，重置', e);
                     state.sessions = {};
                     state.assistants = { 'default': JSON.parse(JSON.stringify(DEFAULT_ASSISTANT)) };
-                    createNewSession();
+                    const newId = generateId();
+                    state.sessions[newId] = {
+                        id: newId,
+                        title: '新对话',
+                        model: state.currentModel,
+                        messages: [],
+                        assistantId: 'default',
+                        createdAt: Date.now(),
+                        updatedAt: Date.now()
+                    };
+                    state.currentSessionId = newId;
+                    saveData();
+                    updateModelUI();
+                    updateHeaderAssistant();
                 }
             }
 
@@ -1217,15 +1256,39 @@
 
             function deleteSession(id) {
                 if (!state.sessions[id]) return;
+                const wasCurrent = (id === state.currentSessionId);
                 delete state.sessions[id];
-                const ids = Object.keys(state.sessions);
-                if (ids.length === 0) {
-                    createNewSession();
-                } else {
-                    if (state.currentSessionId === id) {
-                        state.currentSessionId = ids[0];
+
+                // 如果删除后没有空白对话，创建一个
+                const emptySessions = Object.keys(state.sessions).filter(sid => state.sessions[sid].messages.length === 0);
+                if (emptySessions.length === 0) {
+                    if (Object.keys(state.sessions).length === 0) {
+                        createNewSession();
+                    } else {
+                        // 存在非空但无空白，创建一个空白对话并设为当前
+                        const newId = generateId();
+                        state.sessions[newId] = {
+                            id: newId,
+                            title: '新对话',
+                            model: state.currentModel,
+                            messages: [],
+                            assistantId: 'default',
+                            createdAt: Date.now(),
+                            updatedAt: Date.now()
+                        };
+                        state.currentSessionId = newId;
+                        saveData();
+                        renderSessionList();
+                        renderChat();
+                        updateHeaderAssistant();
+                        return;
                     }
+                } else if (wasCurrent) {
+                    // 当前会话被删除，切换到最新空白
+                    emptySessions.sort((a, b) => (state.sessions[b].updatedAt || 0) - (state.sessions[a].updatedAt || 0));
+                    state.currentSessionId = emptySessions[0];
                 }
+                // else 当前会话没变，保持
                 saveData();
                 renderSessionList();
                 renderChat();
@@ -1708,10 +1771,8 @@
             });
             settingsModal.addEventListener('click', (e) => { if (e.target === settingsModal) closeSettings(); });
 
-            // 头部助手按钮
             headerAssistantBtn.addEventListener('click', openSwitchAssistant);
 
-            // 切换助手弹窗
             btnSwitchCancel.addEventListener('click', () => { switchAssistantModal.classList.remove('open'); });
             btnManageAssistants.addEventListener('click', () => {
                 switchAssistantModal.classList.remove('open');
@@ -1719,7 +1780,6 @@
             });
             switchAssistantModal.addEventListener('click', (e) => { if (e.target === switchAssistantModal) switchAssistantModal.classList.remove('open'); });
 
-            // 管理助手弹窗
             btnManagerClose.addEventListener('click', () => { assistantManagerModal.classList.remove('open'); });
             btnNewAssistantFromManager.addEventListener('click', () => {
                 state.editingFromManager = true;
@@ -1728,7 +1788,6 @@
             });
             assistantManagerModal.addEventListener('click', (e) => { if (e.target === assistantManagerModal) assistantManagerModal.classList.remove('open'); });
 
-            // 编辑助手弹窗
             asstParamsToggle.addEventListener('click', () => {
                 asstParamsOpen = !asstParamsOpen;
                 asstParamsToggle.classList.toggle('open', asstParamsOpen);
@@ -1760,13 +1819,11 @@
                     }
                 }
                 closeAssistantEditor();
-                // 如果是从管理弹窗来的，返回管理弹窗
                 if (state.editingFromManager) {
                     state.editingFromManager = false;
                     openAssistantManager();
                 }
                 updateHeaderAssistant();
-                renderAssistantList(); // 更新切换弹窗内列表（如果打开的话）
             });
             assistantModal.addEventListener('click', (e) => { if (e.target === assistantModal) closeAssistantEditor(); });
 
@@ -1775,10 +1832,7 @@
             // ---------- 初始化 ----------
             function init() {
                 loadData();
-                const current = getCurrentSession();
-                if (current && current.messages.length > 0) {
-                    createNewSession();
-                }
+                // 此时已经确保存在空白对话且 currentSessionId 已正确设置
                 if (state.apiKey) apiKeyInput.value = state.apiKey;
                 updateModelUI();
                 updateHeaderAssistant();
